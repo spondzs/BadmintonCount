@@ -1,0 +1,864 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#111827" />
+  <title>Badminton Scoreboard</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --card: rgba(255,255,255,.10);
+      --card-2: rgba(255,255,255,.14);
+      --text: #f8fafc;
+      --muted: rgba(248,250,252,.72);
+      --line: rgba(255,255,255,.16);
+      --left-1: #4338ca;
+      --left-2: #2563eb;
+      --right-1: #e11d48;
+      --right-2: #fb7185;
+      --green: #34d399;
+      --warn: #fbbf24;
+      --danger: #fb7185;
+      --shadow: 0 24px 80px rgba(0,0,0,.35);
+      --radius: 28px;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; margin: 0; overflow: hidden; background: var(--bg); color: var(--text); }
+    body { touch-action: manipulation; user-select: none; }
+    button, input, select { font: inherit; }
+    button { border: 0; cursor: pointer; color: inherit; }
+
+    .app {
+      width: 100vw;
+      height: 100dvh;
+      min-height: 100vh;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at top left, rgba(67,56,202,.48), transparent 36%),
+        radial-gradient(circle at bottom right, rgba(225,29,72,.46), transparent 38%),
+        linear-gradient(135deg, #070b17 0%, #111827 100%);
+    }
+
+    .screen { display: none; width: 100%; height: 100%; }
+    .screen.active { display: flex; }
+
+    /* SETUP */
+    .setup-screen {
+      overflow-y: auto;
+      padding: max(22px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+      align-items: center;
+      justify-content: center;
+    }
+
+    .setup-wrap { width: min(780px, 100%); padding: 12px 0; }
+    .hero {
+      margin-bottom: 18px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(135deg, rgba(255,255,255,.13), rgba(255,255,255,.06));
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+    .badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.11);
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    .hero h1 { margin: 0 0 8px; font-size: clamp(34px, 9vw, 66px); line-height: .95; letter-spacing: -0.06em; }
+    .hero p { margin: 0; color: var(--muted); font-size: clamp(15px, 3.4vw, 18px); line-height: 1.55; }
+
+    .setup-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(15,23,42,.62);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      padding: 18px;
+    }
+    .grid { display: grid; gap: 14px; }
+    .grid.two { grid-template-columns: 1fr 1fr; }
+    @media (max-width: 680px) { .grid.two { grid-template-columns: 1fr; } }
+
+    .field { display: grid; gap: 8px; }
+    .label { color: var(--muted); font-size: 13px; padding-left: 2px; }
+    .input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      color: var(--text);
+      background: rgba(255,255,255,.10);
+      padding: 14px 14px;
+      outline: none;
+      min-height: 52px;
+    }
+    .input:focus { border-color: rgba(147,197,253,.8); box-shadow: 0 0 0 4px rgba(59,130,246,.18); }
+    select.input { appearance: none; }
+
+    .seg { display: grid; gap: 8px; grid-template-columns: repeat(var(--cols, 2), 1fr); }
+    .seg button {
+      min-height: 52px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.08);
+      color: var(--muted);
+      font-weight: 800;
+    }
+    .seg button.active {
+      background: linear-gradient(135deg, rgba(99,102,241,.95), rgba(59,130,246,.9));
+      color: white;
+      border-color: transparent;
+      box-shadow: 0 12px 28px rgba(37,99,235,.27);
+    }
+
+    .rule-box {
+      margin-top: 14px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255,255,255,.07);
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 14px;
+    }
+    .rule-box b { color: var(--text); }
+
+    .start-btn {
+      width: 100%;
+      min-height: 62px;
+      margin-top: 16px;
+      border-radius: 22px;
+      font-size: 20px;
+      font-weight: 950;
+      background: linear-gradient(135deg, #4f46e5, #ec4899);
+      box-shadow: 0 18px 48px rgba(236,72,153,.25), 0 18px 48px rgba(79,70,229,.20);
+    }
+
+    /* SCOREBOARD */
+    .score-screen { flex-direction: column; position: relative; }
+    .topbar {
+      position: absolute;
+      top: max(10px, env(safe-area-inset-top));
+      left: max(10px, env(safe-area-inset-left));
+      right: max(10px, env(safe-area-inset-right));
+      z-index: 20;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 8px;
+      align-items: center;
+      pointer-events: none;
+    }
+    .topbar > * { pointer-events: auto; }
+    .mini-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .mini-actions.right { justify-content: flex-end; }
+    .pill, .mini-btn {
+      min-height: 38px;
+      padding: 9px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.20);
+      background: rgba(10,15,31,.45);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 10px 30px rgba(0,0,0,.18);
+      color: rgba(255,255,255,.88);
+      font-size: 13px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+    .mini-btn:disabled { opacity: .4; cursor: not-allowed; }
+    .pill { text-align: center; }
+
+    .court {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      width: 100%;
+      height: 100%;
+    }
+    .side {
+      position: relative;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      padding: calc(max(64px, env(safe-area-inset-top)) + 10px) 18px calc(max(16px, env(safe-area-inset-bottom)) + 12px);
+      isolation: isolate;
+    }
+    .side::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -2;
+      opacity: .95;
+    }
+    .side.left::before { background: linear-gradient(145deg, var(--left-1), var(--left-2)); }
+    .side.right::before { background: linear-gradient(145deg, var(--right-1), var(--right-2)); }
+    .side::after {
+      content: "+1";
+      position: absolute;
+      inset: auto 24px 20px auto;
+      font-size: clamp(64px, 18vw, 190px);
+      font-weight: 1000;
+      opacity: .08;
+      letter-spacing: -.08em;
+      z-index: -1;
+    }
+    .side.right::after { inset: auto auto 20px 24px; }
+
+    .side.flash { animation: flash .18s ease; }
+    @keyframes flash { from { filter: brightness(1.35); transform: scale(.997); } to { filter: brightness(1); transform: scale(1); } }
+
+    .team-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; min-height: 70px; }
+    .team-name { font-size: clamp(20px, 4vw, 40px); font-weight: 950; line-height: 1.05; letter-spacing: -.04em; text-wrap: balance; }
+    .sets-badge {
+      min-width: 58px;
+      padding: 8px 10px;
+      border-radius: 16px;
+      background: rgba(255,255,255,.18);
+      text-align: center;
+      font-weight: 1000;
+      font-size: clamp(18px, 3.2vw, 28px);
+    }
+    .sets-badge small { display: block; color: rgba(255,255,255,.70); font-size: 11px; font-weight: 800; margin-top: 1px; }
+
+    .score-wrap { display: flex; align-items: center; justify-content: center; text-align: center; min-height: 0; }
+    .score {
+      font-size: clamp(104px, 31vw, 310px);
+      font-weight: 1000;
+      line-height: .8;
+      letter-spacing: -.10em;
+      text-shadow: 0 22px 60px rgba(0,0,0,.24);
+    }
+    .tap-hint { color: rgba(255,255,255,.73); font-size: clamp(13px, 2.6vw, 16px); font-weight: 800; letter-spacing: .02em; }
+
+    .serve-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      min-height: 48px;
+      padding: 10px 12px;
+      border-radius: 18px;
+      background: rgba(0,0,0,.16);
+      color: rgba(255,255,255,.86);
+      font-size: clamp(12px, 2.4vw, 15px);
+      font-weight: 850;
+    }
+    .serve-dot { width: 12px; height: 12px; border-radius: 99px; background: rgba(255,255,255,.35); box-shadow: 0 0 0 4px rgba(255,255,255,.10); }
+    .serving .serve-dot { background: var(--green); box-shadow: 0 0 0 4px rgba(52,211,153,.22), 0 0 18px rgba(52,211,153,.8); }
+
+    .center-status {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      pointer-events: none;
+    }
+    .round-chip {
+      position: absolute;
+      left: 50%;
+      top: calc(max(72px, env(safe-area-inset-top)) + 8px);
+      transform: translate(-50%, -8px) scale(.98);
+      opacity: 0;
+      visibility: hidden;
+      max-width: min(88vw, 560px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 9px 14px;
+      border-radius: 999px;
+      background: rgba(10,15,31,.58);
+      border: 1px solid rgba(255,255,255,.18);
+      backdrop-filter: blur(16px);
+      font-weight: 950;
+      font-size: clamp(12px, 2.1vw, 15px);
+      box-shadow: 0 12px 40px rgba(0,0,0,.25);
+      white-space: nowrap;
+      transition: opacity .22s ease, transform .22s ease, visibility .22s ease;
+    }
+    .round-chip.show {
+      opacity: 1;
+      visibility: visible;
+      transform: translate(-50%, 0) scale(1);
+    }
+    .round-chip.important {
+      background: rgba(10,15,31,.70);
+      box-shadow: 0 12px 44px rgba(0,0,0,.30), 0 0 0 4px rgba(255,255,255,.08);
+    }
+    .divider-line {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 2px;
+      height: min(54vh, 460px);
+      background: linear-gradient(transparent, rgba(255,255,255,.38), transparent);
+      border-radius: 99px;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      place-items: center;
+      padding: 18px;
+      background: rgba(0,0,0,.58);
+      backdrop-filter: blur(10px);
+    }
+    .modal-backdrop.show { display: grid; }
+    .modal {
+      width: min(500px, 100%);
+      border-radius: 28px;
+      border: 1px solid var(--line);
+      background: rgba(15,23,42,.92);
+      box-shadow: var(--shadow);
+      padding: 20px;
+      text-align: center;
+    }
+    .modal h2 { margin: 6px 0 8px; font-size: clamp(28px, 8vw, 46px); letter-spacing: -.05em; }
+    .modal p { margin: 0 0 16px; color: var(--muted); line-height: 1.55; }
+    .modal-actions { display: grid; gap: 10px; }
+    .modal-actions button {
+      min-height: 54px;
+      border-radius: 18px;
+      background: rgba(255,255,255,.10);
+      font-weight: 950;
+    }
+    .modal-actions .primary { background: linear-gradient(135deg, #4f46e5, #ec4899); }
+
+    @media (orientation: portrait) and (max-width: 720px) {
+      .topbar { grid-template-columns: 1fr; justify-items: center; }
+      .mini-actions, .mini-actions.right { justify-content: center; }
+      .court { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+      .side { padding-top: 104px; padding-bottom: 14px; }
+      .side.right { padding-top: 14px; padding-bottom: calc(max(16px, env(safe-area-inset-bottom)) + 12px); }
+      .round-chip { top: calc(max(126px, env(safe-area-inset-top)) + 8px); font-size: 12px; }
+      .divider-line { width: min(64vw, 360px); height: 2px; }
+      .team-head { min-height: 52px; }
+      .score { font-size: clamp(86px, 28vw, 170px); }
+      .side::after { font-size: 92px; }
+    }
+
+    @media (max-width: 480px) {
+      .mini-btn, .pill { min-height: 34px; padding: 8px 10px; font-size: 12px; }
+      .side { padding-left: 12px; padding-right: 12px; }
+      .serve-card { min-height: 42px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section id="setupScreen" class="screen setup-screen active" aria-label="ตั้งค่าเกม">
+      <div class="setup-wrap">
+        <div class="hero">
+          <div class="badge">🏸 Badminton · Touch Scoreboard</div>
+          <h1>นับแต้มแบดแบบแตะจอ</h1>
+          <p>ตั้งค่าเกม แล้วใช้มือถือ แท็บเล็ต หรือ iPad วางข้างสนามได้เลย แตะฝั่งซ้าย/ขวาเพื่อเพิ่มแต้ม พร้อม Undo และจบเซตอัตโนมัติ</p>
+        </div>
+
+        <form id="setupForm" class="setup-card">
+          <div class="grid two">
+            <div class="field">
+              <span class="label">ชื่อฝั่งซ้าย</span>
+              <input id="leftName" class="input" value="ทีมฟ้า" maxlength="22" autocomplete="off" />
+            </div>
+            <div class="field">
+              <span class="label">ชื่อฝั่งขวา</span>
+              <input id="rightName" class="input" value="ทีมชมพู" maxlength="22" autocomplete="off" />
+            </div>
+          </div>
+
+          <div class="grid two" style="margin-top:14px;">
+            <div class="field">
+              <span class="label">ประเภทแมตช์</span>
+              <div class="seg" data-group="matchType" style="--cols:2">
+                <button type="button" data-value="Single" class="active">Single</button>
+                <button type="button" data-value="Double">Double</button>
+              </div>
+            </div>
+            <div class="field">
+              <span class="label">แต้มต่อเซต</span>
+              <div class="seg" data-group="target" style="--cols:2">
+                <button type="button" data-value="11">11 แต้ม</button>
+                <button type="button" data-value="21" class="active">21 แต้ม</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid two" style="margin-top:14px;">
+            <div class="field">
+              <span class="label">ชนะกี่เซตถึงจบแมตช์</span>
+              <div class="seg" data-group="setsToWin" style="--cols:3">
+                <button type="button" data-value="1">1</button>
+                <button type="button" data-value="2" class="active">2</button>
+                <button type="button" data-value="3">3</button>
+              </div>
+            </div>
+            <div class="field">
+              <span class="label">ฝั่งเสิร์ฟก่อน</span>
+              <div class="seg" data-group="firstServer" style="--cols:2">
+                <button type="button" data-value="left" class="active">ซ้าย</button>
+                <button type="button" data-value="right">ขวา</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="rule-box" id="ruleText"></div>
+          <button class="start-btn" type="submit">เริ่มนับแต้ม</button>
+        </form>
+      </div>
+    </section>
+
+    <section id="scoreScreen" class="screen score-screen" aria-label="หน้านับแต้ม">
+      <div class="topbar">
+        <div class="mini-actions">
+          <button id="homeBtn" class="mini-btn" type="button">⌂ Home</button>
+          <button id="fullBtn" class="mini-btn" type="button">⛶ Full</button>
+        </div>
+        <div id="matchInfo" class="pill">Set 1 · 21 pts</div>
+        <div class="mini-actions right">
+          <button id="undoBtn" class="mini-btn" type="button">↶ Undo</button>
+          <button id="swapBtn" class="mini-btn" type="button">⇄ Swap</button>
+          <button id="resetBtn" class="mini-btn" type="button">Reset</button>
+        </div>
+      </div>
+
+      <div class="center-status">
+        <div id="statusChip" class="round-chip">แตะฝั่งที่ได้แต้ม</div>
+        <div class="divider-line"></div>
+      </div>
+
+      <div class="court">
+        <button id="leftSide" class="side left" type="button" aria-label="เพิ่มแต้มฝั่งซ้าย">
+          <div class="team-head">
+            <div id="leftTeam" class="team-name">ทีมฟ้า</div>
+            <div class="sets-badge"><span id="leftSets">0</span><small>SETS</small></div>
+          </div>
+          <div class="score-wrap"><div id="leftScore" class="score">0</div></div>
+          <div id="leftServe" class="serve-card"><span class="serve-dot"></span><span>รอเสิร์ฟ</span></div>
+        </button>
+
+        <button id="rightSide" class="side right" type="button" aria-label="เพิ่มแต้มฝั่งขวา">
+          <div class="team-head">
+            <div id="rightTeam" class="team-name">ทีมชมพู</div>
+            <div class="sets-badge"><span id="rightSets">0</span><small>SETS</small></div>
+          </div>
+          <div class="score-wrap"><div id="rightScore" class="score">0</div></div>
+          <div id="rightServe" class="serve-card"><span class="serve-dot"></span><span>รอเสิร์ฟ</span></div>
+        </button>
+      </div>
+    </section>
+
+    <div id="modalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true">
+      <div class="modal">
+        <h2 id="modalTitle">จบเซต</h2>
+        <p id="modalText"></p>
+        <div class="modal-actions" id="modalActions"></div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    const defaultSettings = {
+      leftName: 'ทีมฟ้า',
+      rightName: 'ทีมชมพู',
+      matchType: 'Single',
+      target: 21,
+      setsToWin: 2,
+      firstServer: 'left'
+    };
+
+    let settings = loadSettings();
+    let state = createNewState(settings);
+    let history = [];
+    let modalLocked = false;
+    let statusTimer = null;
+
+    const setupScreen = $('setupScreen');
+    const scoreScreen = $('scoreScreen');
+    const modalBackdrop = $('modalBackdrop');
+
+    function loadSettings() {
+      try { return { ...defaultSettings, ...(JSON.parse(localStorage.getItem('badmintonSettings')) || {}) }; }
+      catch { return { ...defaultSettings }; }
+    }
+
+    function saveSettings() {
+      localStorage.setItem('badmintonSettings', JSON.stringify(settings));
+    }
+
+    function saveMatch() {
+      localStorage.setItem('badmintonMatch', JSON.stringify({ settings, state, history }));
+    }
+
+    function clearMatch() {
+      localStorage.removeItem('badmintonMatch');
+    }
+
+    function createNewState(s) {
+      return {
+        leftScore: 0,
+        rightScore: 0,
+        leftSets: 0,
+        rightSets: 0,
+        currentSet: 1,
+        server: s.firstServer,
+        finished: false,
+        setFinished: false,
+        lastPoint: null
+      };
+    }
+
+    function capPoint() {
+      return settings.target === 21 ? 30 : 15;
+    }
+
+    function maxSetsText() {
+      return settings.setsToWin === 1 ? 'Best of 1' : settings.setsToWin === 2 ? 'Best of 3' : 'Best of 5';
+    }
+
+    function updateRuleText() {
+      const cap = capPoint();
+      $('ruleText').innerHTML = `
+        <b>กติกาที่ใช้:</b> เล่นแบบ Rally Point ใครได้แต้มเป็นฝ่ายเสิร์ฟต่อ · เซตละ ${settings.target} แต้ม · ถ้าแต้มใกล้กันต้องนำ 2 แต้ม · แต้มสูงสุด ${cap} · ชนะ ${settings.setsToWin} เซตจบแมตช์ (${maxSetsText()})
+      `;
+    }
+
+    function setActive(group, value) {
+      document.querySelectorAll(`[data-group="${group}"] button`).forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.value == value);
+      });
+    }
+
+    function initSetup() {
+      $('leftName').value = settings.leftName;
+      $('rightName').value = settings.rightName;
+      setActive('matchType', settings.matchType);
+      setActive('target', settings.target);
+      setActive('setsToWin', settings.setsToWin);
+      setActive('firstServer', settings.firstServer);
+      updateRuleText();
+    }
+
+    document.querySelectorAll('.seg button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const group = btn.closest('.seg').dataset.group;
+        const rawValue = btn.dataset.value;
+        settings[group] = ['target', 'setsToWin'].includes(group) ? Number(rawValue) : rawValue;
+        setActive(group, rawValue);
+        updateRuleText();
+      });
+    });
+
+    $('setupForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      settings.leftName = $('leftName').value.trim() || 'ทีมฟ้า';
+      settings.rightName = $('rightName').value.trim() || 'ทีมชมพู';
+      saveSettings();
+      state = createNewState(settings);
+      history = [];
+      modalLocked = false;
+      clearMatch();
+      showScore();
+    });
+
+    function showSetup(confirmExit = false) {
+      if (confirmExit && !state.finished && (state.leftScore || state.rightScore || state.leftSets || state.rightSets)) {
+        if (!confirm('ออกจากเกมนี้และกลับไปตั้งค่าใหม่?')) return;
+      }
+      setupScreen.classList.add('active');
+      scoreScreen.classList.remove('active');
+      closeModal();
+      initSetup();
+    }
+
+    function showScore() {
+      setupScreen.classList.remove('active');
+      scoreScreen.classList.add('active');
+      render();
+      showStatusToast(1800);
+      saveMatch();
+    }
+
+    function clone(obj) { return JSON.parse(JSON.stringify(obj)); }
+
+    function addPoint(side) {
+      if (modalLocked || state.finished || state.setFinished) return;
+      history.push(clone(state));
+      if (history.length > 80) history.shift();
+
+      if (side === 'left') state.leftScore += 1;
+      else state.rightScore += 1;
+
+      state.server = side;
+      state.lastPoint = side;
+      flash(side);
+      vibrate(18);
+      checkSetWinner();
+      render();
+      if (!state.finished && !state.setFinished) showStatusToast(isImportantStatus() ? 2600 : 1200);
+      saveMatch();
+    }
+
+    function checkSetWinner() {
+      const l = state.leftScore;
+      const r = state.rightScore;
+      const target = settings.target;
+      const cap = capPoint();
+      const leftWin = (l >= target && l - r >= 2) || l === cap;
+      const rightWin = (r >= target && r - l >= 2) || r === cap;
+
+      if (!leftWin && !rightWin) return;
+      const winner = leftWin ? 'left' : 'right';
+      state.setFinished = true;
+      if (winner === 'left') state.leftSets += 1;
+      else state.rightSets += 1;
+
+      const matchWinner = state.leftSets >= settings.setsToWin || state.rightSets >= settings.setsToWin;
+      if (matchWinner) {
+        state.finished = true;
+        render();
+        saveMatch();
+        showResultModal('match', winner);
+      } else {
+        render();
+        saveMatch();
+        showResultModal('set', winner);
+      }
+    }
+
+    function team(side) {
+      return side === 'left' ? settings.leftName : settings.rightName;
+    }
+
+    function scoreText() {
+      return `${state.leftScore} - ${state.rightScore}`;
+    }
+
+    function showResultModal(type, winner) {
+      modalLocked = true;
+      const isMatch = type === 'match';
+      $('modalTitle').textContent = isMatch ? 'จบแมตช์ 🎉' : 'จบเซต';
+      $('modalText').textContent = isMatch
+        ? `${team(winner)} ชนะ ${state.leftSets} - ${state.rightSets} เซต | คะแนนเซตล่าสุด ${scoreText()}`
+        : `${team(winner)} ชนะเซตนี้ ${scoreText()} | เซต ${state.leftSets} - ${state.rightSets}`;
+
+      const actions = $('modalActions');
+      actions.innerHTML = '';
+
+      if (!isMatch) {
+        actions.appendChild(makeModalButton('เซตถัดไป', 'primary', nextSet));
+      }
+      actions.appendChild(makeModalButton('เริ่มแมตช์ใหม่', isMatch ? 'primary' : '', resetMatch));
+      actions.appendChild(makeModalButton('กลับหน้า Home', '', () => showSetup(false)));
+
+      modalBackdrop.classList.add('show');
+    }
+
+    function makeModalButton(text, cls, fn) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = text;
+      if (cls) btn.className = cls;
+      btn.addEventListener('click', fn);
+      return btn;
+    }
+
+    function closeModal() {
+      modalLocked = false;
+      modalBackdrop.classList.remove('show');
+      const chip = $('statusChip');
+      chip.classList.remove('show', 'important');
+      clearTimeout(statusTimer);
+    }
+
+    function nextSet() {
+      const previousServer = state.server;
+      state.currentSet += 1;
+      state.leftScore = 0;
+      state.rightScore = 0;
+      state.setFinished = false;
+      state.lastPoint = null;
+      // ให้ผู้ชนะเซตก่อนหน้าเสิร์ฟก่อนในเซตถัดไปแบบง่าย ๆ
+      state.server = previousServer;
+      history = [];
+      closeModal();
+      render();
+      showStatusToast(1800);
+      saveMatch();
+    }
+
+    function resetMatch() {
+      if (!state.finished && !confirm('รีเซ็ตแมตช์นี้ใหม่ทั้งหมด?')) return;
+      state = createNewState(settings);
+      history = [];
+      closeModal();
+      render();
+      showStatusToast(1800);
+      saveMatch();
+    }
+
+    function undo() {
+      if (!history.length) return;
+      state = history.pop();
+      closeModal();
+      render();
+      showStatusToast(1200);
+      saveMatch();
+    }
+
+    function swapSides() {
+      history.push(clone(state));
+      [settings.leftName, settings.rightName] = [settings.rightName, settings.leftName];
+      [state.leftScore, state.rightScore] = [state.rightScore, state.leftScore];
+      [state.leftSets, state.rightSets] = [state.rightSets, state.leftSets];
+      state.server = state.server === 'left' ? 'right' : 'left';
+      state.lastPoint = state.lastPoint === 'left' ? 'right' : state.lastPoint === 'right' ? 'left' : null;
+      saveSettings();
+      render();
+      saveMatch();
+    }
+
+    function serviceCourt(side) {
+      const score = side === 'left' ? state.leftScore : state.rightScore;
+      return score % 2 === 0 ? 'คอร์ตขวา' : 'คอร์ตซ้าย';
+    }
+
+    function render() {
+      $('leftTeam').textContent = settings.leftName;
+      $('rightTeam').textContent = settings.rightName;
+      $('leftScore').textContent = state.leftScore;
+      $('rightScore').textContent = state.rightScore;
+      $('leftSets').textContent = state.leftSets;
+      $('rightSets').textContent = state.rightSets;
+      $('matchInfo').textContent = `Set ${state.currentSet} · ${settings.target} pts · ${settings.matchType} · ชนะ ${settings.setsToWin} เซต`;
+      $('undoBtn').disabled = !history.length;
+
+      const lServe = $('leftServe');
+      const rServe = $('rightServe');
+      lServe.classList.toggle('serving', state.server === 'left');
+      rServe.classList.toggle('serving', state.server === 'right');
+      lServe.lastElementChild.textContent = state.server === 'left' ? `เสิร์ฟ · ${serviceCourt('left')}` : 'รับลูก';
+      rServe.lastElementChild.textContent = state.server === 'right' ? `เสิร์ฟ · ${serviceCourt('right')}` : 'รับลูก';
+
+      $('leftSide').disabled = state.finished || state.setFinished;
+      $('rightSide').disabled = state.finished || state.setFinished;
+
+      if (state.finished) {
+        const winner = state.leftSets > state.rightSets ? settings.leftName : settings.rightName;
+        setStatusChip(`${winner} ชนะ Match`, true);
+      } else if (state.setFinished) {
+        setStatusChip(`จบ Set ${state.currentSet}`, true);
+      } else {
+        setStatusChip(statusText(), isImportantStatus());
+      }
+    }
+
+    function setStatusChip(text, important = false) {
+      const chip = $('statusChip');
+      chip.textContent = text;
+      chip.classList.toggle('important', important);
+      if (important) {
+        chip.classList.add('show');
+        clearTimeout(statusTimer);
+      } else {
+        chip.classList.remove('important');
+      }
+    }
+
+    function showStatusToast(ms = 1400) {
+      const chip = $('statusChip');
+      chip.classList.add('show');
+      clearTimeout(statusTimer);
+      if (!chip.classList.contains('important')) {
+        statusTimer = setTimeout(() => chip.classList.remove('show'), ms);
+      }
+    }
+
+    function isImportantStatus() {
+      const l = state.leftScore;
+      const r = state.rightScore;
+      const target = settings.target;
+      const cap = capPoint();
+      return (l === r && l >= target - 1) ||
+        (Math.max(l, r) >= target - 1 && Math.abs(l - r) === 1) ||
+        Math.max(l, r) === cap - 1;
+    }
+
+    function statusText() {
+      const l = state.leftScore;
+      const r = state.rightScore;
+      const target = settings.target;
+      const cap = capPoint();
+      if (l === r && l >= target - 1) return 'Deuce · ต้องนำ 2 แต้ม';
+      if (Math.max(l, r) >= target - 1 && Math.abs(l - r) === 1) return 'Game Point';
+      if (Math.max(l, r) === cap - 1) return 'แต้มสุดท้าย';
+      return `เสิร์ฟ: ${team(state.server)} · แตะฝั่งที่ได้แต้ม`;
+    }
+
+    function flash(side) {
+      const el = side === 'left' ? $('leftSide') : $('rightSide');
+      el.classList.remove('flash');
+      void el.offsetWidth;
+      el.classList.add('flash');
+    }
+
+    function vibrate(ms) {
+      if ('vibrate' in navigator) navigator.vibrate(ms);
+    }
+
+    async function toggleFullscreen() {
+      try {
+        if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+        else await document.exitFullscreen();
+      } catch (e) {
+        alert('ถ้าเป็น iPhone/Safari อาจไม่รองรับ Fullscreen API ให้กดซ่อนแถบเบราว์เซอร์หรือ Add to Home Screen แทนครับ');
+      }
+    }
+
+    $('leftSide').addEventListener('click', () => addPoint('left'));
+    $('rightSide').addEventListener('click', () => addPoint('right'));
+    $('undoBtn').addEventListener('click', undo);
+    $('swapBtn').addEventListener('click', swapSides);
+    $('resetBtn').addEventListener('click', resetMatch);
+    $('homeBtn').addEventListener('click', () => showSetup(true));
+    $('fullBtn').addEventListener('click', toggleFullscreen);
+
+    window.addEventListener('keydown', (e) => {
+      const key = e.key.toLowerCase();
+      if (key === 'a' || key === 'arrowleft') addPoint('left');
+      if (key === 'l' || key === 'arrowright') addPoint('right');
+      if ((e.ctrlKey || e.metaKey) && key === 'z') undo();
+      if (key === 'r') resetMatch();
+    });
+
+    // ป้องกัน double-tap zoom บางเบราว์เซอร์
+    let lastTouch = 0;
+    document.addEventListener('touchend', (e) => {
+      const now = Date.now();
+      if (now - lastTouch <= 280) e.preventDefault();
+      lastTouch = now;
+    }, { passive: false });
+
+    initSetup();
+
+    // ถ้ามีเกมค้างอยู่ จะถามก่อนโหลดต่อ เพื่อกันเผลอทับข้อมูล
+    try {
+      const saved = JSON.parse(localStorage.getItem('badmintonMatch'));
+      if (saved && saved.state && (saved.state.leftScore || saved.state.rightScore || saved.state.leftSets || saved.state.rightSets)) {
+        if (confirm('พบเกมที่นับค้างไว้ ต้องการโหลดต่อไหม?')) {
+          settings = { ...defaultSettings, ...saved.settings };
+          state = saved.state;
+          history = saved.history || [];
+          showScore();
+        }
+      }
+    } catch {}
+  </script>
+</body>
+</html>
