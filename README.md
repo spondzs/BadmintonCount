@@ -1,0 +1,2 @@
+# BadmintonCount
+App Count score 
