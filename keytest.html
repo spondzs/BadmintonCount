@@ -3,8 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Remote Key Tester</title>
+  <title>JX-11 Remote Tester</title>
   <style>
+    * { box-sizing: border-box; }
+
     body {
       margin: 0;
       min-height: 100vh;
@@ -17,7 +19,7 @@
     }
 
     .box {
-      width: min(560px, 100%);
+      width: min(680px, 100%);
       background: rgba(255,255,255,.08);
       border: 1px solid rgba(255,255,255,.16);
       border-radius: 24px;
@@ -26,13 +28,26 @@
     }
 
     h1 {
-      margin-top: 0;
+      margin: 0 0 10px;
       font-size: 28px;
     }
 
     .hint {
       color: #cbd5e1;
-      line-height: 1.6;
+      line-height: 1.7;
+      margin-bottom: 16px;
+    }
+
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 18px;
+      padding: 16px;
+      font-size: 18px;
+      font-weight: 900;
+      color: white;
+      background: linear-gradient(135deg, #2563eb, #db2777);
+      cursor: pointer;
     }
 
     .result {
@@ -40,84 +55,179 @@
       padding: 18px;
       border-radius: 18px;
       background: rgba(255,255,255,.10);
-      font-size: 18px;
+      font-size: 16px;
       line-height: 1.7;
       word-break: break-word;
     }
 
     .big {
-      font-size: 42px;
-      font-weight: 900;
+      font-size: 34px;
+      font-weight: 950;
       color: #38bdf8;
+      margin: 6px 0;
     }
 
-    button {
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .mini {
+      background: rgba(0,0,0,.18);
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    textarea {
       width: 100%;
-      margin-top: 18px;
-      border: 0;
-      border-radius: 18px;
-      padding: 16px;
-      font-size: 18px;
-      font-weight: 800;
+      min-height: 92px;
+      margin-top: 16px;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 16px;
+      padding: 14px;
+      background: rgba(255,255,255,.10);
       color: white;
-      background: linear-gradient(135deg, #2563eb, #db2777);
+      font-size: 16px;
+      outline: none;
+      resize: vertical;
     }
 
     .log {
       margin-top: 18px;
-      max-height: 240px;
+      max-height: 280px;
       overflow: auto;
-      background: rgba(0,0,0,.25);
+      background: rgba(0,0,0,.28);
       border-radius: 16px;
       padding: 14px;
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size: 13px;
       color: #e2e8f0;
+      line-height: 1.55;
+    }
+
+    .warn {
+      margin-top: 12px;
+      color: #facc15;
+      font-size: 14px;
+      line-height: 1.55;
     }
   </style>
 </head>
 <body>
   <div class="box">
-    <h1>Bluetooth Remote Tester</h1>
+    <h1>JX-11 Remote Tester</h1>
+
     <div class="hint">
-      1. เชื่อมต่อรีโมท Bluetooth ก่อน<br>
-      2. แตะปุ่ม Start Test<br>
-      3. กดปุ่มบนรีโมท แล้วดูค่า key / code ที่ขึ้น
+      1. เชื่อมต่อ JX-11 ก่อน<br>
+      2. คลิกปุ่ม Start Test<br>
+      3. คลิกช่อง Test Input ด้านล่างอีกที<br>
+      4. กดปุ่มบนรีโมท แล้วดู log
     </div>
 
-    <button id="startBtn">Start Test</button>
+    <button id="startBtn">Start Test / Focus Page</button>
+
+    <textarea id="testInput" placeholder="คลิกตรงนี้ แล้วลองกดรีโมท ถ้ามันส่งเป็นตัวอักษรหรือคำสั่งคีย์บอร์ด จะเห็นผลตรงนี้"></textarea>
 
     <div class="result">
-      <div>Last key:</div>
-      <div id="lastKey" class="big">-</div>
-      <div>code: <span id="lastCode">-</span></div>
-      <div>keyCode: <span id="lastKeyCode">-</span></div>
+      <div>Last event:</div>
+      <div id="lastEvent" class="big">-</div>
+
+      <div class="grid">
+        <div class="mini">key: <b id="lastKey">-</b></div>
+        <div class="mini">code: <b id="lastCode">-</b></div>
+        <div class="mini">keyCode: <b id="lastKeyCode">-</b></div>
+        <div class="mini">delta: <b id="lastDelta">-</b></div>
+      </div>
+    </div>
+
+    <div class="warn">
+      ถ้ากดแล้วไม่มีอะไรขึ้นเลย ให้ลองคลิกหน้าเว็บอีกครั้ง หรือเปิด TextEdit/Notes แล้วกดรีโมทดูว่ามีตัวอักษร/เลื่อนหน้าไหม
     </div>
 
     <div id="log" class="log">ยังไม่มีข้อมูล</div>
   </div>
 
   <script>
+    const lastEvent = document.getElementById('lastEvent');
     const lastKey = document.getElementById('lastKey');
     const lastCode = document.getElementById('lastCode');
     const lastKeyCode = document.getElementById('lastKeyCode');
+    const lastDelta = document.getElementById('lastDelta');
     const log = document.getElementById('log');
     const startBtn = document.getElementById('startBtn');
+    const testInput = document.getElementById('testInput');
+
+    function writeLog(text) {
+      const line = `[${new Date().toLocaleTimeString()}] ${text}`;
+      log.innerHTML = line + '<br>' + log.innerHTML;
+    }
+
+    function showEvent(type, data = {}) {
+      lastEvent.textContent = type;
+      lastKey.textContent = data.key ?? '-';
+      lastCode.textContent = data.code ?? '-';
+      lastKeyCode.textContent = data.keyCode ?? '-';
+      lastDelta.textContent = data.delta ?? '-';
+
+      writeLog(
+        `${type} | key="${data.key ?? '-'}" | code="${data.code ?? '-'}" | keyCode="${data.keyCode ?? '-'}" | delta="${data.delta ?? '-'}"`
+      );
+    }
 
     startBtn.addEventListener('click', () => {
-      startBtn.textContent = 'กำลังรอรับปุ่มจากรีโมท...';
       window.focus();
+      testInput.focus();
+      startBtn.textContent = 'กำลังรอรับปุ่มจากรีโมท...';
+      writeLog('Started. Page focused. Try pressing remote buttons.');
     });
 
     document.addEventListener('keydown', (e) => {
-      e.preventDefault();
+      showEvent('keydown', {
+        key: e.key,
+        code: e.code,
+        keyCode: e.keyCode
+      });
 
-      lastKey.textContent = e.key || '-';
-      lastCode.textContent = e.code || '-';
-      lastKeyCode.textContent = e.keyCode || '-';
+      if (
+        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Space'].includes(e.code)
+      ) {
+        e.preventDefault();
+      }
+    });
 
-      const line = `[${new Date().toLocaleTimeString()}] key="${e.key}" | code="${e.code}" | keyCode=${e.keyCode}`;
-      log.innerHTML = line + '<br>' + log.innerHTML;
+    document.addEventListener('keyup', (e) => {
+      showEvent('keyup', {
+        key: e.key,
+        code: e.code,
+        keyCode: e.keyCode
+      });
+    });
+
+    document.addEventListener('wheel', (e) => {
+      showEvent('wheel', {
+        delta: `x:${e.deltaX}, y:${e.deltaY}`
+      });
+    }, { passive: true });
+
+    document.addEventListener('click', (e) => {
+      showEvent('click', {
+        delta: `x:${Math.round(e.clientX)}, y:${Math.round(e.clientY)}`
+      });
+    });
+
+    document.addEventListener('pointerdown', (e) => {
+      showEvent('pointerdown', {
+        delta: `button:${e.button}, x:${Math.round(e.clientX)}, y:${Math.round(e.clientY)}`
+      });
+    });
+
+    testInput.addEventListener('input', () => {
+      showEvent('input', {
+        key: testInput.value.slice(-1) || '-',
+        code: 'textarea'
+      });
     });
   </script>
 </body>
