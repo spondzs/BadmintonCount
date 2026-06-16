@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Remote Key Tester</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: white;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+    }
+
+    .box {
+      width: min(560px, 100%);
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.35);
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 28px;
+    }
+
+    .hint {
+      color: #cbd5e1;
+      line-height: 1.6;
+    }
+
+    .result {
+      margin-top: 18px;
+      padding: 18px;
+      border-radius: 18px;
+      background: rgba(255,255,255,.10);
+      font-size: 18px;
+      line-height: 1.7;
+      word-break: break-word;
+    }
+
+    .big {
+      font-size: 42px;
+      font-weight: 900;
+      color: #38bdf8;
+    }
+
+    button {
+      width: 100%;
+      margin-top: 18px;
+      border: 0;
+      border-radius: 18px;
+      padding: 16px;
+      font-size: 18px;
+      font-weight: 800;
+      color: white;
+      background: linear-gradient(135deg, #2563eb, #db2777);
+    }
+
+    .log {
+      margin-top: 18px;
+      max-height: 240px;
+      overflow: auto;
+      background: rgba(0,0,0,.25);
+      border-radius: 16px;
+      padding: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 13px;
+      color: #e2e8f0;
+    }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>Bluetooth Remote Tester</h1>
+    <div class="hint">
+      1. เชื่อมต่อรีโมท Bluetooth ก่อน<br>
+      2. แตะปุ่ม Start Test<br>
+      3. กดปุ่มบนรีโมท แล้วดูค่า key / code ที่ขึ้น
+    </div>
+
+    <button id="startBtn">Start Test</button>
+
+    <div class="result">
+      <div>Last key:</div>
+      <div id="lastKey" class="big">-</div>
+      <div>code: <span id="lastCode">-</span></div>
+      <div>keyCode: <span id="lastKeyCode">-</span></div>
+    </div>
+
+    <div id="log" class="log">ยังไม่มีข้อมูล</div>
+  </div>
+
+  <script>
+    const lastKey = document.getElementById('lastKey');
+    const lastCode = document.getElementById('lastCode');
+    const lastKeyCode = document.getElementById('lastKeyCode');
+    const log = document.getElementById('log');
+    const startBtn = document.getElementById('startBtn');
+
+    startBtn.addEventListener('click', () => {
+      startBtn.textContent = 'กำลังรอรับปุ่มจากรีโมท...';
+      window.focus();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      e.preventDefault();
+
+      lastKey.textContent = e.key || '-';
+      lastCode.textContent = e.code || '-';
+      lastKeyCode.textContent = e.keyCode || '-';
+
+      const line = `[${new Date().toLocaleTimeString()}] key="${e.key}" | code="${e.code}" | keyCode=${e.keyCode}`;
+      log.innerHTML = line + '<br>' + log.innerHTML;
+    });
+  </script>
+</body>
+</html>
