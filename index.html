@@ -50,7 +50,7 @@
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       padding:
-        calc(env(safe-area-inset-top, 0px) + 34px)
+        calc(env(safe-area-inset-top, 0px) + 76px)
         calc(env(safe-area-inset-right, 0px) + 18px)
         calc(env(safe-area-inset-bottom, 0px) + 24px)
         calc(env(safe-area-inset-left, 0px) + 18px);
@@ -60,19 +60,15 @@
     
     .setup-wrap {
       width: min(780px, 100%);
-      padding: 0 0 16px;
+      padding: 0 0 18px;
       margin: 0 auto;
     }
-
-    .setup-wrap { width: min(780px, 100%); padding: 12px 0; }
-    .hero {
-      margin-bottom: 18px;
-      padding: 22px;
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: linear-gradient(135deg, rgba(255,255,255,.13), rgba(255,255,255,.06));
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(18px);
+    
+    @media (min-width: 721px) {
+      .setup-screen {
+        padding-top: calc(env(safe-area-inset-top, 0px) + 34px);
+        justify-content: center;
+      }
     }
     .badge {
       display: inline-flex; align-items: center; gap: 8px;
@@ -434,7 +430,7 @@
         <div class="mini-actions">
           <button id="homeBtn" class="mini-btn" type="button">⌂ Home</button>
           <button id="fullBtn" class="mini-btn" type="button">⛶ Full</button>
-          <button id="ringBtn" class="mini-btn" type="button">💍 Ring</button>
+          <button id="remoteBtn" class="mini-btn" type="button">🎮 Clicker</button>
         </div>
         <div id="matchInfo" class="pill">Set 1 · 21 pts</div>
         <div class="mini-actions right">
@@ -501,6 +497,7 @@
     let ringAudio = null;
     let ringAudioUrl = null;
 
+    const REMOTE_COOLDOWN = 420;
     const setupScreen = $('setupScreen');
     const scoreScreen = $('scoreScreen');
     const modalBackdrop = $('modalBackdrop');
@@ -593,9 +590,21 @@
       if (confirmExit && !state.finished && (state.leftScore || state.rightScore || state.leftSets || state.rightSets)) {
         if (!confirm('ออกจากเกมนี้และกลับไปตั้งค่าใหม่?')) return;
       }
+    
+      disableRemoteMode(false);
+    
       setupScreen.classList.add('active');
       scoreScreen.classList.remove('active');
       closeModal();
+      window.addEventListener('pagehide', () => {
+        disableRemoteMode(false);
+      });
+      
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          disableRemoteMode(false);
+        }
+      });
       initSetup();
     }
 
@@ -875,6 +884,220 @@
       writeString(36, 'data');
       view.setUint32(40, dataSize, true);
     
+      return URL.createObjectURL(new Blob([view], { type: 'audio/wav' }));
+    }
+    
+    async function ensureRemoteAudioPlaying() {
+      if (!remoteAudioUrl) {
+        remoteAudioUrl = createSilentWavUrl();
+      }
+    
+      if (!remoteAudio) {
+        remoteAudio = new Audio(remoteAudioUrl);
+        remoteAudio.loop = true;
+        remoteAudio.preload = 'auto';
+        remoteAudio.setAttribute('playsinline', '');
+      }
+    
+      try {
+        await remoteAudio.play();
+        return true;
+      } catch (err) {
+        console.warn('Remote audio play failed:', err);
+        return false;
+      }
+    }
+    
+    function safeSetMediaAction(action, handler) {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch (err) {
+        console.warn(`Media action not supported: ${action}`, err);
+      }
+    }
+    
+    function clearMediaAction(action) {
+      try {
+        navigator.mediaSession.setActionHandler(action, null);
+      } catch (err) {
+        console.warn(`Cannot clear media action: ${action}`, err);
+      }
+    }
+    
+    function remoteSignal(text, ms = 1200) {
+      setStatusChip(text, false);
+      showStatusToast(ms);
+    }
+    
+    function remoteAddPoint(side) {
+      if (!scoreScreen.classList.contains('active')) return;
+    
+      const now = Date.now();
+      if (now - remoteLastAt < REMOTE_COOLDOWN) return;
+      remoteLastAt = now;
+    
+      addPoint(side);
+      remoteSignal(`🎮 Clicker · ${team(side)} +1`, 900);
+    }
+    
+    function remoteUndo() {
+      if (!scoreScreen.classList.contains('active')) return;
+    
+      const now = Date.now();
+      if (now - remoteLastAt < REMOTE_COOLDOWN) return;
+      remoteLastAt = now;
+    
+      undo();
+      remoteSignal('🎮 Clicker · Undo', 900);
+    }
+    
+    async function enableRemoteMode() {
+      if (!('mediaSession' in navigator)) {
+        alert('เครื่อง/เบราว์เซอร์นี้ยังไม่รองรับ Media Session API ครับ');
+        return;
+      }
+    
+      const audioReady = await ensureRemoteAudioPlaying();
+    
+      if (!audioReady) {
+        alert('เปิด Clicker Mode ไม่สำเร็จครับ ลองกดปุ่ม Clicker อีกครั้ง');
+        return;
+      }
+    
+      if ('MediaMetadata' in window) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: 'Badminton Scoreboard',
+          artist: 'Clicker Remote Mode',
+          album: 'SpondFlow Court'
+        });
+      }
+    
+      // JX-11: กดซ้าย 2 ครั้ง = Previous Track = ทีมฟ้า +1
+      safeSetMediaAction('previoustrack', () => {
+        remoteAddPoint('left');
+      });
+    
+      // JX-11: กดขวา 2 ครั้ง = Next Track = ทีมชมพู +1
+      safeSetMediaAction('nexttrack', () => {
+        remoteAddPoint('right');
+      });
+    
+      // เผื่อบางโหมดส่งเป็น play/pause ใช้เป็น Undo
+      safeSetMediaAction('play', () => {
+        remoteUndo();
+      });
+    
+      safeSetMediaAction('pause', () => {
+        remoteUndo();
+      });
+    
+      safeSetMediaAction('stop', () => {
+        remoteUndo();
+      });
+    
+      // ดักไว้เพื่อทดสอบปุ่มหมุน/ซูม ถ้ามันส่งเป็น seek จะมีข้อความเด้ง
+      safeSetMediaAction('seekbackward', () => {
+        remoteSignal('🎮 Clicker signal: seek backward', 1400);
+      });
+    
+      safeSetMediaAction('seekforward', () => {
+        remoteSignal('🎮 Clicker signal: seek forward', 1400);
+      });
+    
+      safeSetMediaAction('seekto', () => {
+        remoteSignal('🎮 Clicker signal: seek to', 1400);
+      });
+    
+      // เผื่อ browser รุ่นใหม่มองเป็น slide remote
+      safeSetMediaAction('previousslide', () => {
+        remoteSignal('🎮 Clicker signal: previous slide', 1400);
+      });
+    
+      safeSetMediaAction('nextslide', () => {
+        remoteSignal('🎮 Clicker signal: next slide', 1400);
+      });
+    
+      navigator.mediaSession.playbackState = 'playing';
+    
+      remoteModeOn = true;
+    
+      const btn = $('remoteBtn');
+      btn.classList.add('remote-on');
+      btn.textContent = '🎮 Clicker ON';
+    
+      remoteSignal('🎮 Clicker ON · ซ้าย 2 ครั้ง = ทีมฟ้า · ขวา 2 ครั้ง = ทีมชมพู', 2600);
+    }
+    
+    function disableRemoteMode(showToast = true) {
+      if ('mediaSession' in navigator) {
+        [
+          'previoustrack',
+          'nexttrack',
+          'play',
+          'pause',
+          'stop',
+          'seekbackward',
+          'seekforward',
+          'seekto',
+          'previousslide',
+          'nextslide'
+        ].forEach(clearMediaAction);
+    
+        try {
+          navigator.mediaSession.playbackState = 'none';
+        } catch {}
+      }
+    
+      if (remoteAudio) {
+        remoteAudio.pause();
+        remoteAudio.currentTime = 0;
+      }
+    
+      remoteModeOn = false;
+    
+      const btn = $('remoteBtn');
+      if (btn) {
+        btn.classList.remove('remote-on');
+        btn.textContent = '🎮 Clicker';
+      }
+    
+      if (showToast && scoreScreen.classList.contains('active')) {
+        remoteSignal('ปิด Clicker Mode แล้ว', 1000);
+      }
+    }
+
+    function createSilentWavUrl() {
+      const sampleRate = 8000;
+      const seconds = 1;
+      const numSamples = sampleRate * seconds;
+      const bytesPerSample = 2;
+      const blockAlign = bytesPerSample;
+      const byteRate = sampleRate * blockAlign;
+      const dataSize = numSamples * bytesPerSample;
+    
+      const buffer = new ArrayBuffer(44 + dataSize);
+      const view = new DataView(buffer);
+    
+      function writeString(offset, text) {
+        for (let i = 0; i < text.length; i++) {
+          view.setUint8(offset + i, text.charCodeAt(i));
+        }
+      }
+    
+      writeString(0, 'RIFF');
+      view.setUint32(4, 36 + dataSize, true);
+      writeString(8, 'WAVE');
+      writeString(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, byteRate, true);
+      view.setUint16(32, blockAlign, true);
+      view.setUint16(34, 16, true);
+      writeString(36, 'data');
+      view.setUint32(40, dataSize, true);
+    
       // ตัวอย่างเสียงเป็น 0 ทั้งหมด = silent audio
       return URL.createObjectURL(new Blob([view], { type: 'audio/wav' }));
     }
@@ -990,7 +1213,7 @@
     $('resetBtn').addEventListener('click', resetMatch);
     $('homeBtn').addEventListener('click', () => showSetup(true));
     $('fullBtn').addEventListener('click', toggleFullscreen);
-    $('ringBtn').addEventListener('click', enableRingRemoteMode);
+    $('remoteBtn').addEventListener('click', enableRemoteMode);
 
     window.addEventListener('keydown', (e) => {
       const key = e.key.toLowerCase();
