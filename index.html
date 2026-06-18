@@ -1141,14 +1141,21 @@
       background: linear-gradient(135deg, #4f46e5, #ec4899);
     }
 
-    /* Remote cursor highlight */
+    /* Remote / modal selected highlight */
     .remote-selected {
-      outline: 4px solid rgba(255,255,255,.92) !important;
+      outline: 4px solid rgba(255,255,255,.94) !important;
       outline-offset: -4px;
       box-shadow:
         0 0 0 8px rgba(56,189,248,.34),
-        0 18px 50px rgba(0,0,0,.28) !important;
+        0 18px 50px rgba(0,0,0,.32) !important;
       filter: brightness(1.12);
+    }
+    
+    .modal-actions button.remote-selected {
+      background:
+        linear-gradient(135deg, rgba(99,102,241,.98), rgba(236,72,153,.92)) !important;
+      color: white;
+      transform: scale(1.025);
     }
     
     .remote-selected::before {
@@ -1310,11 +1317,7 @@
     let remoteAudioUrl = null;
     let remoteLastAt = 0;
     const REMOTE_COOLDOWN = 420;
-    let remoteCursorIndex = 0;
-    let remoteCursorActive = false;
-    let remoteCursorLastAt = 0;
-    const REMOTE_CURSOR_TIMEOUT = 4500;
-
+    let modalCursorIndex = 0;
     const setupScreen = $('setupScreen');
     const scoreScreen = $('scoreScreen');
     const modalBackdrop = $('modalBackdrop');
@@ -1543,6 +1546,9 @@
       actions.appendChild(makeModalButton('กลับหน้า Home', '', () => showSetup(false)));
 
       modalBackdrop.classList.add('show');
+
+      modalCursorIndex = 0;
+      setTimeout(updateModalCursor, 60);
     }
 
     function makeModalButton(text, cls, fn) {
@@ -1559,10 +1565,12 @@
     function closeModal() {
       modalLocked = false;
       modalBackdrop.classList.remove('show');
-
+    
+      clearRemoteSelection();
+    
       const chip = $('statusChip');
       chip.classList.remove('show', 'important');
-
+    
       clearTimeout(statusTimer);
     }
 
@@ -1863,119 +1871,69 @@
       remoteSignal('🎮 Undo', 800);
     }
 
-    function getRemoteTargets() {
-      const targets = [
-        {
-          id: 'leftSide',
-          label: `${settings.leftName} +1`,
-          run: () => addPoint('left')
-        },
-        {
-          id: 'rightSide',
-          label: `${settings.rightName} +1`,
-          run: () => addPoint('right')
-        },
-        {
-          id: 'undoBtn',
-          label: 'Undo',
-          run: () => undo()
-        },
-        {
-          id: 'swapBtn',
-          label: 'Swap',
-          run: () => swapSides()
-        },
-        {
-          id: 'resetBtn',
-          label: 'Reset',
-          run: () => resetMatch()
-        },
-        {
-          id: 'homeBtn',
-          label: 'Home',
-          run: () => showSetup(true)
-        },
-        {
-          id: 'fullBtn',
-          label: 'Full screen',
-          run: () => toggleFullscreen()
-        }
-      ];
-    
-      return targets.filter((item) => {
-        const el = $(item.id);
-        if (!el) return false;
-        if (el.disabled) return false;
-        return scoreScreen.classList.contains('active');
-      });
+    function isModalOpen() {
+      return modalBackdrop.classList.contains('show');
     }
     
-    function clearRemoteCursor() {
+    function getModalButtons() {
+      return Array
+        .from(document.querySelectorAll('#modalActions button'))
+        .filter((btn) => !btn.disabled);
+    }
+    
+    function clearRemoteSelection() {
       document.querySelectorAll('.remote-selected').forEach((el) => {
         el.classList.remove('remote-selected');
       });
     }
     
-    function updateRemoteCursor() {
-      const targets = getRemoteTargets();
+    function updateModalCursor() {
+      const buttons = getModalButtons();
     
-      clearRemoteCursor();
+      clearRemoteSelection();
     
-      if (!targets.length) return;
+      if (!buttons.length) return;
     
-      if (remoteCursorIndex < 0) remoteCursorIndex = targets.length - 1;
-      if (remoteCursorIndex >= targets.length) remoteCursorIndex = 0;
+      if (modalCursorIndex < 0) modalCursorIndex = buttons.length - 1;
+      if (modalCursorIndex >= buttons.length) modalCursorIndex = 0;
     
-      const target = targets[remoteCursorIndex];
-      const el = $(target.id);
+      const btn = buttons[modalCursorIndex];
+      btn.classList.add('remote-selected');
     
-      if (!el) return;
-    
-      el.classList.add('remote-selected');
-    
-      remoteCursorActive = true;
-      remoteCursorLastAt = Date.now();
-    
-      remoteSignal(`🎮 เลือก: ${target.label}`, 1000);
+      remoteSignal(`🎮 เลือก: ${btn.textContent}`, 900);
     }
     
-    function moveRemoteCursor(direction = 1) {
-      const targets = getRemoteTargets();
-      if (!targets.length) return;
+    function moveModalCursor(direction = 1) {
+      const buttons = getModalButtons();
+      if (!buttons.length) return;
     
-      remoteCursorIndex += direction;
+      modalCursorIndex += direction;
     
-      if (remoteCursorIndex < 0) remoteCursorIndex = targets.length - 1;
-      if (remoteCursorIndex >= targets.length) remoteCursorIndex = 0;
+      if (modalCursorIndex < 0) modalCursorIndex = buttons.length - 1;
+      if (modalCursorIndex >= buttons.length) modalCursorIndex = 0;
     
-      updateRemoteCursor();
+      updateModalCursor();
     }
     
-    function activateRemoteCursorTarget() {
-      const targets = getRemoteTargets();
-      if (!targets.length) return false;
+    function selectModalCursor() {
+      const buttons = getModalButtons();
+      if (!buttons.length) return;
     
-      if (remoteCursorIndex < 0) remoteCursorIndex = targets.length - 1;
-      if (remoteCursorIndex >= targets.length) remoteCursorIndex = 0;
+      if (modalCursorIndex < 0) modalCursorIndex = buttons.length - 1;
+      if (modalCursorIndex >= buttons.length) modalCursorIndex = 0;
     
-      const target = targets[remoteCursorIndex];
+      const btn = buttons[modalCursorIndex];
     
-      clearRemoteCursor();
-      remoteCursorActive = false;
+      remoteSignal(`🎮 กด: ${btn.textContent}`, 700);
     
-      remoteSignal(`🎮 กด: ${target.label}`, 900);
-      target.run();
-    
-      return true;
+      setTimeout(() => {
+        btn.click();
+      }, 80);
     }
     
     function remoteUndoOrSelect() {
-      const cursorStillActive =
-        remoteCursorActive &&
-        Date.now() - remoteCursorLastAt <= REMOTE_CURSOR_TIMEOUT;
-    
-      if (cursorStillActive) {
-        activateRemoteCursorTarget();
+      if (isModalOpen()) {
+        selectModalCursor();
         return;
       }
     
@@ -2006,11 +1964,19 @@
       }
 
       safeSetMediaAction('previoustrack', () => {
-        remoteAddPoint('left');
+        if (isModalOpen()) {
+          moveModalCursor(-1);
+        } else {
+          remoteAddPoint('left');
+        }
       });
-
+      
       safeSetMediaAction('nexttrack', () => {
-        remoteAddPoint('right');
+        if (isModalOpen()) {
+          moveModalCursor(1);
+        } else {
+          remoteAddPoint('right');
+        }
       });
 
       // ปุ่มวงกลมค้าง 1 วิ:
@@ -2028,28 +1994,46 @@
         remoteUndoOrSelect();
       });
       
-      // ลูกกลิ้ง / คำสั่ง seek:
-      // ถ้า JX-11 ส่ง action เหล่านี้เข้ามา จะใช้เป็น cursor ได้ทันที
       safeSetMediaAction('seekbackward', () => {
-        moveRemoteCursor(-1);
+        if (isModalOpen()) {
+          moveModalCursor(-1);
+        } else {
+          remoteSignal('🎮 signal: seek backward', 1000);
+        }
       });
       
       safeSetMediaAction('seekforward', () => {
-        moveRemoteCursor(1);
+        if (isModalOpen()) {
+          moveModalCursor(1);
+        } else {
+          remoteSignal('🎮 signal: seek forward', 1000);
+        }
       });
       
       safeSetMediaAction('seekto', (details) => {
         console.log('seekto details:', details);
-        moveRemoteCursor(1);
+      
+        if (isModalOpen()) {
+          moveModalCursor(1);
+        } else {
+          remoteSignal('🎮 signal: seek to', 1000);
+        }
       });
       
-      // เผื่อ iOS/Safari หรือรีโมทบางโหมดตีความเป็น slide remote
       safeSetMediaAction('previousslide', () => {
-        moveRemoteCursor(-1);
+        if (isModalOpen()) {
+          moveModalCursor(-1);
+        } else {
+          remoteSignal('🎮 signal: previous slide', 1000);
+        }
       });
       
       safeSetMediaAction('nextslide', () => {
-        moveRemoteCursor(1);
+        if (isModalOpen()) {
+          moveModalCursor(1);
+        } else {
+          remoteSignal('🎮 signal: next slide', 1000);
+        }
       });
 
       navigator.mediaSession.playbackState = 'playing';
@@ -2077,8 +2061,8 @@
           'nextslide'
         ].forEach(clearMediaAction);
         
-        clearRemoteCursor();
-        remoteCursorActive = false;
+        clearRemoteSelection();
+        modalCursorIndex = 0;
 
         try {
           navigator.mediaSession.playbackState = 'none';
