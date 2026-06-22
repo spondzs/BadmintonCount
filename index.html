@@ -1316,6 +1316,8 @@
     let remoteAudio = null;
     let remoteAudioUrl = null;
     let remoteLastAt = 0;
+    let remoteWatchdogTimer = null;
+    let remoteStopRequested = false;
     const REMOTE_COOLDOWN = 420;
     let modalCursorIndex = 0;
     const setupScreen = $('setupScreen');
@@ -1765,29 +1767,39 @@
 
     /* =========================
        CLICKER / MEDIA SESSION
+    
        JX-11:
        Previous Track = Left +1
-       Next Track = Right +1
+       Next Track     = Right +1
+       Play/Pause     = Undo / Select modal
+    
+       Apple Watch:
+       Seek Back 10s  = Left +1
+       Seek Forward   = Right +1
+       Play/Pause     = Undo / Select modal
     ========================== */
-
+    
     function createSilentWavUrl() {
       const sampleRate = 8000;
-      const seconds = 1;
+    
+      // ยาว 10 นาที ลดโอกาส Safari งอแงตรง loop
+      const seconds = 600;
+    
       const numSamples = sampleRate * seconds;
       const bytesPerSample = 2;
       const blockAlign = bytesPerSample;
       const byteRate = sampleRate * blockAlign;
       const dataSize = numSamples * bytesPerSample;
-
+    
       const buffer = new ArrayBuffer(44 + dataSize);
       const view = new DataView(buffer);
-
+    
       function writeString(offset, text) {
         for (let i = 0; i < text.length; i++) {
           view.setUint8(offset + i, text.charCodeAt(i));
         }
       }
-
+    
       writeString(0, 'RIFF');
       view.setUint32(4, 36 + dataSize, true);
       writeString(8, 'WAVE');
@@ -1801,31 +1813,132 @@
       view.setUint16(34, 16, true);
       writeString(36, 'data');
       view.setUint32(40, dataSize, true);
-
+    
+      // near-silent pulse: ไม่เงียบ 0 ทั้งไฟล์ แต่เบามากจนแทบไม่ได้ยิน
+      for (let i = 0; i < numSamples; i++) {
+        const sample = i % 257 === 0 ? 1 : 0;
+        view.setInt16(44 + i * 2, sample, true);
+      }
+    
       return URL.createObjectURL(new Blob([view], { type: 'audio/wav' }));
     }
-
+    
+    function updateRemotePositionState() {
+      if (!('mediaSession' in navigator)) return;
+      if (!remoteAudio) return;
+      if (!navigator.mediaSession.setPositionState) return;
+    
+      try {
+        navigator.mediaSession.setPositionState({
+          duration: 600,
+          playbackRate: 1,
+          position: Math.min(remoteAudio.currentTime || 0, 599)
+        });
+      } catch {}
+    }
+    
     async function ensureRemoteAudioPlaying() {
       if (!remoteAudioUrl) {
         remoteAudioUrl = createSilentWavUrl();
       }
-
+    
       if (!remoteAudio) {
         remoteAudio = new Audio(remoteAudioUrl);
         remoteAudio.loop = true;
         remoteAudio.preload = 'auto';
+        remoteAudio.volume = 1;
         remoteAudio.setAttribute('playsinline', '');
+    
+        remoteAudio.addEventListener('pause', () => {
+          if (remoteStopRequested) return;
+          if (!remoteModeOn) return;
+          if (!scoreScreen.classList.contains('active')) return;
+          if (document.hidden) return;
+    
+          setTimeout(() => {
+            ensureRemoteAudioPlaying();
+          }, 250);
+        });
+    
+        remoteAudio.addEventListener('ended', () => {
+          if (remoteStopRequested) return;
+          if (!remoteModeOn) return;
+          if (!scoreScreen.classList.contains('active')) return;
+          if (document.hidden) return;
+    
+          remoteAudio.currentTime = 0;
+    
+          setTimeout(() => {
+            ensureRemoteAudioPlaying();
+          }, 250);
+        });
+    
+        ['stalled', 'suspend', 'waiting', 'emptied', 'error'].forEach((eventName) => {
+          remoteAudio.addEventListener(eventName, () => {
+            console.warn('Remote audio event:', eventName);
+    
+            if (remoteStopRequested) return;
+            if (!remoteModeOn) return;
+            if (!scoreScreen.classList.contains('active')) return;
+            if (document.hidden) return;
+    
+            setTimeout(() => {
+              ensureRemoteAudioPlaying();
+            }, 500);
+          });
+        });
       }
-
+    
       try {
         await remoteAudio.play();
+    
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'playing';
+          updateRemotePositionState();
+        }
+    
         return true;
       } catch (err) {
         console.warn('Remote audio play failed:', err);
         return false;
       }
     }
-
+    
+    function startRemoteWatchdog() {
+      clearInterval(remoteWatchdogTimer);
+    
+      remoteWatchdogTimer = setInterval(() => {
+        if (!remoteModeOn) return;
+        if (!scoreScreen.classList.contains('active')) return;
+        if (document.hidden) return;
+    
+        if (!remoteAudio || remoteAudio.paused || remoteAudio.ended) {
+          ensureRemoteAudioPlaying();
+          return;
+        }
+    
+        try {
+          navigator.mediaSession.playbackState = 'playing';
+          updateRemotePositionState();
+        } catch {}
+      }, 3500);
+    }
+    
+    function stopRemoteWatchdog() {
+      clearInterval(remoteWatchdogTimer);
+      remoteWatchdogTimer = null;
+    }
+    
+    function keepRemoteAliveSoon() {
+      setTimeout(() => {
+        if (!remoteModeOn) return;
+        if (document.hidden) return;
+        if (!scoreScreen.classList.contains('active')) return;
+    
+        ensureRemoteAudioPlaying();
+      }, 120);
+    }
+    
     function safeSetMediaAction(action, handler) {
       try {
         navigator.mediaSession.setActionHandler(action, handler);
@@ -1833,7 +1946,7 @@
         console.warn(`Media action not supported: ${action}`, err);
       }
     }
-
+    
     function clearMediaAction(action) {
       try {
         navigator.mediaSession.setActionHandler(action, null);
@@ -1841,36 +1954,38 @@
         console.warn(`Cannot clear media action: ${action}`, err);
       }
     }
-
+    
     function remoteSignal(text, ms = 1000) {
       setStatusChip(text, false);
       showStatusToast(ms);
     }
-
+    
     function remoteAddPoint(side) {
       if (!scoreScreen.classList.contains('active')) return;
-
+    
       const now = Date.now();
       if (now - remoteLastAt < REMOTE_COOLDOWN) return;
-
+    
       remoteLastAt = now;
-
+    
       addPoint(side);
       remoteSignal(`🎮 ${team(side)} +1`, 800);
+      keepRemoteAliveSoon();
     }
-
+    
     function remoteUndo() {
       if (!scoreScreen.classList.contains('active')) return;
-
+    
       const now = Date.now();
       if (now - remoteLastAt < REMOTE_COOLDOWN) return;
-
+    
       remoteLastAt = now;
-
+    
       undo();
       remoteSignal('🎮 Undo', 800);
+      keepRemoteAliveSoon();
     }
-
+    
     function isModalOpen() {
       return modalBackdrop.classList.contains('show');
     }
@@ -1913,6 +2028,7 @@
       if (modalCursorIndex >= buttons.length) modalCursorIndex = 0;
     
       updateModalCursor();
+      keepRemoteAliveSoon();
     }
     
     function selectModalCursor() {
@@ -1925,6 +2041,7 @@
       const btn = buttons[modalCursorIndex];
     
       remoteSignal(`🎮 กด: ${btn.textContent}`, 700);
+      keepRemoteAliveSoon();
     
       setTimeout(() => {
         btn.click();
@@ -1939,22 +2056,27 @@
     
       remoteUndo();
     }
-
+    
+    function remoteUndoOrSelectAndKeepAlive() {
+      remoteUndoOrSelect();
+      keepRemoteAliveSoon();
+    }
+    
     async function enableRemoteMode(auto = false) {
-      if (remoteModeOn) return true;
-
+      remoteStopRequested = false;
+    
       if (!('mediaSession' in navigator)) {
         if (!auto) alert('เครื่อง/เบราว์เซอร์นี้ยังไม่รองรับ Media Session API ครับ');
         return false;
       }
-
+    
       const audioReady = await ensureRemoteAudioPlaying();
-
+    
       if (!audioReady) {
         if (!auto) alert('เปิด Clicker Mode ไม่สำเร็จครับ');
         return false;
       }
-
+    
       if ('MediaMetadata' in window) {
         navigator.mediaSession.metadata = new MediaMetadata({
           title: 'Badminton Scoreboard',
@@ -1962,91 +2084,112 @@
           album: 'SpondFlow Court'
         });
       }
-
+    
       safeSetMediaAction('previoustrack', () => {
         if (isModalOpen()) {
           moveModalCursor(-1);
         } else {
           remoteAddPoint('left');
         }
+    
+        keepRemoteAliveSoon();
       });
-      
+    
       safeSetMediaAction('nexttrack', () => {
         if (isModalOpen()) {
           moveModalCursor(1);
         } else {
           remoteAddPoint('right');
         }
+    
+        keepRemoteAliveSoon();
       });
-
-      // ปุ่มวงกลมค้าง 1 วิ:
-      // ถ้าเพิ่งใช้ลูกกลิ้งเลือก cursor = กดปุ่มที่เลือก
-      // ถ้าไม่ได้เลือก cursor = Undo
+    
       safeSetMediaAction('play', () => {
-        remoteUndoOrSelect();
+        remoteUndoOrSelectAndKeepAlive();
       });
-      
+    
       safeSetMediaAction('pause', () => {
-        remoteUndoOrSelect();
+        remoteUndoOrSelectAndKeepAlive();
       });
-      
+    
       safeSetMediaAction('stop', () => {
-        remoteUndoOrSelect();
+        remoteUndoOrSelectAndKeepAlive();
       });
-      
-      safeSetMediaAction('seekbackward', () => {
+    
+      safeSetMediaAction('seekbackward', (details) => {
+        console.log('seekbackward:', details);
+    
         if (isModalOpen()) {
           moveModalCursor(-1);
         } else {
-          remoteSignal('🎮 signal: seek backward', 1000);
+          remoteAddPoint('left');
         }
+    
+        keepRemoteAliveSoon();
       });
-      
-      safeSetMediaAction('seekforward', () => {
+    
+      safeSetMediaAction('seekforward', (details) => {
+        console.log('seekforward:', details);
+    
         if (isModalOpen()) {
           moveModalCursor(1);
         } else {
-          remoteSignal('🎮 signal: seek forward', 1000);
+          remoteAddPoint('right');
         }
+    
+        keepRemoteAliveSoon();
       });
-      
+    
       safeSetMediaAction('seekto', (details) => {
         console.log('seekto details:', details);
-      
+    
         if (isModalOpen()) {
           moveModalCursor(1);
         } else {
-          remoteSignal('🎮 signal: seek to', 1000);
+          remoteSignal('🎮 signal: seek to', 900);
         }
+    
+        keepRemoteAliveSoon();
       });
-      
+    
       safeSetMediaAction('previousslide', () => {
         if (isModalOpen()) {
           moveModalCursor(-1);
         } else {
-          remoteSignal('🎮 signal: previous slide', 1000);
+          remoteSignal('🎮 signal: previous slide', 900);
         }
+    
+        keepRemoteAliveSoon();
       });
-      
+    
       safeSetMediaAction('nextslide', () => {
         if (isModalOpen()) {
           moveModalCursor(1);
         } else {
-          remoteSignal('🎮 signal: next slide', 1000);
+          remoteSignal('🎮 signal: next slide', 900);
         }
+    
+        keepRemoteAliveSoon();
       });
-
+    
       navigator.mediaSession.playbackState = 'playing';
+      updateRemotePositionState();
+    
       remoteModeOn = true;
-
+      startRemoteWatchdog();
+    
       if (!auto) {
         remoteSignal('🎮 Clicker พร้อมใช้งาน', 1200);
       }
-
+    
       return true;
     }
-
+    
     function disableRemoteMode(showToast = true) {
+      remoteStopRequested = true;
+      stopRemoteWatchdog();
+    
       if ('mediaSession' in navigator) {
         [
           'previoustrack',
@@ -2060,22 +2203,22 @@
           'previousslide',
           'nextslide'
         ].forEach(clearMediaAction);
-        
+    
         clearRemoteSelection();
         modalCursorIndex = 0;
-
+    
         try {
           navigator.mediaSession.playbackState = 'none';
         } catch {}
       }
-
+    
       if (remoteAudio) {
         remoteAudio.pause();
         remoteAudio.currentTime = 0;
       }
-
+    
       remoteModeOn = false;
-
+    
       if (showToast && scoreScreen.classList.contains('active')) {
         remoteSignal('ปิด Clicker Mode แล้ว', 900);
       }
@@ -2092,6 +2235,22 @@
     $('resetBtn').addEventListener('click', resetMatch);
     $('homeBtn').addEventListener('click', () => showSetup(true));
     $('fullBtn').addEventListener('click', toggleFullscreen);
+
+    scoreScreen.addEventListener('pointerdown', () => {
+      if (!scoreScreen.classList.contains('active')) return;
+    
+      const shouldRevive =
+        !remoteModeOn ||
+        !remoteAudio ||
+        remoteAudio.paused ||
+        remoteAudio.ended;
+    
+      if (shouldRevive) {
+        enableRemoteMode(true).then((ok) => {
+          if (ok) remoteSignal('🎮 Clicker กลับมาพร้อมใช้งาน', 900);
+        });
+      }
+    }, { passive: true });
 
     window.addEventListener('keydown', (e) => {
       const key = e.key.toLowerCase();
